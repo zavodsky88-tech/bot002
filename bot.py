@@ -2,7 +2,15 @@ import telebot
 import os
 
 TOKEN = os.getenv("TOKEN")
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
+ADMIN_ID = os.getenv("ADMIN_ID")
+
+if not TOKEN:
+    raise Exception("TOKEN не задан")
+
+if not ADMIN_ID:
+    raise Exception("ADMIN_ID не задан")
+
+ADMIN_ID = int(ADMIN_ID)
 
 bot = telebot.TeleBot(TOKEN)
 
