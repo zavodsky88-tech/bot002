@@ -1,8 +1,8 @@
 import telebot
 
 # ====== ВАШИ НАСТРОЙКИ ======
-TOKEN = "ВАШ_ТОКЕН_БОТА"  # вставьте токен, который получите у BotFather
-ADMIN_ID = 123456789      # вставьте свой Telegram ID, куда будут приходить заявки
+TOKEN = "8542034986:AAHlph-7hJgQn_AxH2PPXhZLUPUKTkztbiI"  # вставьте токен, который получите у BotFather
+ADMIN_ID = 1979125261      # вставьте свой Telegram ID, куда будут приходить заявки
 
 bot = telebot.TeleBot(TOKEN)
 
