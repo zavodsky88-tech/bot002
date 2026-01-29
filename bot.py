@@ -1,105 +1,80 @@
 import telebot
+from telebot import types
+import json
+import os
 
-# ====== ВАШИ НАСТРОЙКИ ======
-TOKEN = "8542034986:AAHlph-7hJgQn_AxH2PPXhZLUPUKTkztbiI"  # вставьте токен, который получите у BotFather
-ADMIN_ID = 1979125261      # вставьте свой Telegram ID, куда будут приходить заявки
+# ====== Настройки ======
+TOKEN = "8542034986:AAHlph-7hJgQn_AxH2PPXhZLUPUKTkztbiI"
+ADMIN_ID = 1979125261  # Ваш Telegram ID
+SALON_NAME = "Салон красоты"
+ADDRESS = "ул. Примерная, 1"
+WORK_HOURS = "10:00–20:00"
+PHONE = "+7 (999) 123-45-67"
+PAY_LINK = "https://pay.qiwi.com/order/external/ВАША_СУММА"  # ссылка на оплату
 
 bot = telebot.TeleBot(TOKEN)
 
-# ====== ДАННЫЕ САЛОНА ======
-SALON_NAME = "Салон красоты 'Люкс'"
-ADDRESS = "г. Москва, ул. Примерная, 10"
-WORK_HOURS = "Пн-Сб 10:00–20:00"
-PHONE = "+7 900 123-45-67"
+# ====== Локальное хранилище заявок (JSON) ======
+DB_FILE = "applications.json"
+if not os.path.exists(DB_FILE):
+    with open(DB_FILE, "w", encoding="utf-8") as f:
+        json.dump([], f)
 
-SERVICES = {
-    "Маникюр / Педикюр": ["Классический", "Аппаратный", "С покрытием", "Дизайн"],
-    "Парикмахерские услуги": ["Стрижка", "Окрашивание", "Укладка"],
-    "Брови / Ресницы": ["Коррекция бровей", "Наращивание ресниц"],
-    "Косметология": ["Чистка лица", "Массаж лица"]
-}
+def save_application(app):
+    with open(DB_FILE, "r+", encoding="utf-8") as f:
+        data = json.load(f)
+        data.append(app)
+        f.seek(0)
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
-PRICES = {
-    "Маникюр / Педикюр": "от 1000 ₽",
-    "Парикмахерские услуги": "от 1500 ₽",
-    "Брови / Ресницы": "от 500 ₽",
-    "Косметология": "от 2000 ₽"
-}
+# ====== Главное меню ======
+def menu():
+    m = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    m.row("💇‍♀️ Услуги", "📅 Записаться")
+    m.row("💰 Цены", "📍 Контакты")
+    return m
 
-# ====== МЕНЮ ======
-def main_menu():
-    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.row("💇‍♀️ Услуги", "💰 Цены")
-    markup.row("📅 Записаться", "❓ Вопросы")
-    markup.row("📍 Контакты")
-    return markup
-
-# ====== СТАРТ ======
+# ====== Старт ======
 @bot.message_handler(commands=["start"])
 def start(message):
     bot.send_message(
         message.chat.id,
-        f"💅 Добро пожаловать в {SALON_NAME}!\nЯ помогу узнать услуги, цены и записаться.",
-        reply_markup=main_menu()
+        f"💅 Добро пожаловать в {SALON_NAME}!\nВыберите пункт меню:",
+        reply_markup=menu()
     )
 
-# ====== МЕНЮ ======
-@bot.message_handler(func=lambda message: True)
-def menu(message):
-    text = message.text
-
-    if text == "💇‍♀️ Услуги":
-        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-        for service in SERVICES.keys():
-            markup.row(service)
-        markup.row("🔙 Назад")
-        bot.send_message(message.chat.id, "Выберите услугу:", reply_markup=markup)
-
-    elif text in SERVICES:
-        bot.send_message(message.chat.id, f"{text} включает:\n- " + "\n- ".join(SERVICES[text]))
-        markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-        markup.row("📅 Записаться", "🔙 Назад")
-        bot.send_message(message.chat.id, "Хотите записаться?", reply_markup=markup)
-
-    elif text == "💰 Цены":
-        prices_text = "\n".join([f"{k}: {v}" for k,v in PRICES.items()])
-        bot.send_message(message.chat.id, f"💰 Наши цены:\n{prices_text}")
-
-    elif text == "📅 Записаться":
-        bot.send_message(message.chat.id, "Отправьте данные в формате:\nИмя, Услуга, Дата/Время, Телефон")
-        bot.register_next_step_handler(message, collect_application)
-
-    elif text == "❓ Вопросы":
-        bot.send_message(message.chat.id, "Выберите вопрос:\n1. Где находимся?\n2. Время работы?\n3. Контакты")
-        bot.register_next_step_handler(message, faq_handler)
-
-    elif text == "📍 Контакты":
-        bot.send_message(message.chat.id, f"📍 Адрес: {ADDRESS}\n⏰ Время работы: {WORK_HOURS}\n📞 Телефон: {PHONE}")
-
-    elif text == "🔙 Назад":
-        bot.send_message(message.chat.id, "Главное меню:", reply_markup=main_menu())
-
+# ====== Обработка кнопок ======
+@bot.message_handler(func=lambda m: True)
+def handler(message):
+    if message.text == "💇‍♀️ Услуги":
+        bot.send_message(message.chat.id, "Маникюр • Стрижки • Брови • Макияж")
+    elif message.text == "💰 Цены":
+        bot.send_message(message.chat.id, "Маникюр — от 1000 ₽\nСтрижка — от 800 ₽\nБрови — от 500 ₽")
+    elif message.text == "📍 Контакты":
+        bot.send_message(message.chat.id, f"{ADDRESS}\n{PHONE}\nЧасы работы: {WORK_HOURS}")
+    elif message.text == "📅 Записаться":
+        msg = bot.send_message(message.chat.id, "Напишите заявку в формате:\nИмя, услуга, дата, телефон")
+        bot.register_next_step_handler(msg, application)
     else:
-        bot.send_message(message.chat.id, "Пожалуйста, используйте меню.")
+        bot.send_message(message.chat.id, "Выберите пункт из меню", reply_markup=menu())
 
-# ====== СОБИРАЕМ ЗАЯВКУ ======
-def collect_application(message):
-    application = message.text
-    bot.send_message(message.chat.id, "✅ Спасибо! Заявка отправлена. Мы свяжемся с вами.")
-    bot.send_message(ADMIN_ID, f"Новая заявка:\n{application}")
+# ====== Получение заявки ======
+def application(message):
+    # Формируем заявку
+    app = {
+        "user_id": message.chat.id,
+        "text": message.text
+    }
+    save_application(app)
 
-# ====== FAQ ======
-def faq_handler(message):
-    text = message.text.lower()
-    if "1" in text or "где" in text:
-        bot.send_message(message.chat.id, f"Мы находимся по адресу: {ADDRESS}")
-    elif "2" in text or "время" in text:
-        bot.send_message(message.chat.id, f"Время работы: {WORK_HOURS}")
-    elif "3" in text or "контакты" in text:
-        bot.send_message(message.chat.id, f"Телефон: {PHONE}")
-    else:
-        bot.send_message(message.chat.id, "Выберите вариант из списка.")
-    bot.send_message(message.chat.id, "Главное меню:", reply_markup=main_menu())
+    # Отправляем пользователю ссылку на оплату
+    markup = types.InlineKeyboardMarkup()
+    pay_button = types.InlineKeyboardButton(text="💳 Оплатить", url=PAY_LINK)
+    markup.add(pay_button)
+    bot.send_message(message.chat.id, "✅ Ваша заявка принята! Оплатите, чтобы подтвердить:", reply_markup=markup)
 
-# ====== ЗАПУСК ======
+    # Уведомляем администратора
+    bot.send_message(ADMIN_ID, f"Новая заявка:\n{message.text}\nОплата через: {PAY_LINK}")
+
+# ====== Запуск бота ======
 bot.infinity_polling()
