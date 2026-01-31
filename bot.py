@@ -9,91 +9,113 @@ SALON_NAME = "Nails & Style"
 
 bot = telebot.TeleBot(TOKEN)
 
-# Простая CRM в памяти (можно заменить на БД)
+# ===== ХРАНИЛИЩА =====
 crm = {}
+user_state = {}
+
+# ===== МЕНЮ =====
+def main_menu():
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("✨ Подобрать услугу")
+    kb.add("📅 Записаться")
+    kb.add("💰 Цены", "📍 Контакты")
+    return kb
 
 # ===== СТАРТ =====
 @bot.message_handler(commands=["start"])
 def start(message):
-    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add("✨ Подобрать услугу")
-    kb.add("📅 Записаться", "🔥 Акции")
+    user_state.pop(message.chat.id, None)
+    crm.pop(message.chat.id, None)
 
     bot.send_message(
         message.chat.id,
-        f"💅 Привет!\nЯ помощник салона *{SALON_NAME}*.\nПомогу выбрать услугу и записаться 💖",
+        f"💅 Привет!\nЯ помощник салона *{SALON_NAME}*.\nПомогу записаться 💖",
         parse_mode="Markdown",
-        reply_markup=kb
+        reply_markup=main_menu()
     )
 
-# ===== ПОДБОР УСЛУГИ =====
-@bot.message_handler(func=lambda m: m.text == "✨ Подобрать услугу")
-def choose_service(message):
-    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add("💨 Быстро", "✨ Эффектно", "💆‍♀️ Уход")
-    bot.send_message(message.chat.id, "Что для тебя важнее сегодня?", reply_markup=kb)
+# ===== МЕНЮ =====
+@bot.message_handler(func=lambda m: m.text in ["💰 Цены", "📍 Контакты"])
+def info(message):
+    user_state.pop(message.chat.id, None)
+    crm.pop(message.chat.id, None)
 
-@bot.message_handler(func=lambda m: m.text in ["💨 Быстро", "✨ Эффектно", "💆‍♀️ Уход"])
-def recommend(message):
-    recommendations = {
-        "💨 Быстро": "Экспресс-маникюр",
-        "✨ Эффектно": "Маникюр + дизайн",
-        "💆‍♀️ Уход": "Маникюр + SPA"
-    }
-    service = recommendations[message.text]
-    crm[message.chat.id] = {"service": service}
+    if message.text == "💰 Цены":
+        bot.send_message(message.chat.id, "Маникюр — от 1000 ₽\nСтрижка — от 800 ₽")
+    else:
+        bot.send_message(message.chat.id, "📍 ул. Примерная, 1\n📞 +7 999 000-00-00")
 
-    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    kb.add("📅 Записаться", "🔙 В меню")
-
-    bot.send_message(
-        message.chat.id,
-        f"✨ Рекомендую:\n*{service}*\n\nХочешь записаться?",
-        parse_mode="Markdown",
-        reply_markup=kb
-    )
-
-# ===== ЗАПИСЬ =====
+# ===== НАЧАЛО ЗАПИСИ =====
 @bot.message_handler(func=lambda m: m.text == "📅 Записаться")
-def ask_name(message):
+def booking_start(message):
     crm[message.chat.id] = {}
-    msg = bot.send_message(message.chat.id, "Как тебя зовут?")
-    bot.register_next_step_handler(msg, get_name)
+    user_state[message.chat.id] = "WAIT_NAME"
 
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("❌ Отменить запись")
+
+    bot.send_message(
+        message.chat.id,
+        "Как тебя зовут?",
+        reply_markup=kb
+    )
+
+# ===== ОТМЕНА =====
+@bot.message_handler(func=lambda m: m.text == "❌ Отменить запись")
+def cancel(message):
+    user_state.pop(message.chat.id, None)
+    crm.pop(message.chat.id, None)
+
+    bot.send_message(
+        message.chat.id,
+        "❌ Запись отменена",
+        reply_markup=main_menu()
+    )
+
+# ===== FSM =====
+@bot.message_handler(func=lambda m: user_state.get(m.chat.id) == "WAIT_NAME")
 def get_name(message):
-    crm[message.chat.id]["name"] = message.text
-    msg = bot.send_message(message.chat.id, "Оставь номер телефона 📞")
-    bot.register_next_step_handler(msg, get_phone)
+    if message.text.startswith("❌"):
+        return
 
+    crm[message.chat.id]["name"] = message.text
+    user_state[message.chat.id] = "WAIT_PHONE"
+
+    bot.send_message(message.chat.id, "Оставь номер телефона 📞")
+
+@bot.message_handler(func=lambda m: user_state.get(m.chat.id) == "WAIT_PHONE")
 def get_phone(message):
     crm[message.chat.id]["phone"] = message.text
-    msg = bot.send_message(message.chat.id, "Какую услугу выбираешь?")
-    bot.register_next_step_handler(msg, get_service)
+    user_state[message.chat.id] = "WAIT_SERVICE"
 
+    bot.send_message(message.chat.id, "Какую услугу выбираешь?")
+
+@bot.message_handler(func=lambda m: user_state.get(m.chat.id) == "WAIT_SERVICE")
 def get_service(message):
     crm[message.chat.id]["service"] = message.text
-    msg = bot.send_message(message.chat.id, "На какую дату хочешь записаться?")
-    bot.register_next_step_handler(msg, get_date)
+    user_state[message.chat.id] = "WAIT_DATE"
 
+    bot.send_message(message.chat.id, "На какую дату хочешь записаться?")
+
+@bot.message_handler(func=lambda m: user_state.get(m.chat.id) == "WAIT_DATE")
 def get_date(message):
     data = crm[message.chat.id]
+
     request_id = str(uuid.uuid4())[:8]
     now = datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
 
-    # Лог в консоль (Railway Logs = CRM)
     print({
         "id": request_id,
         "date": now,
-        "name": data["name"],
-        "phone": data["phone"],
-        "service": data["service"],
+        **data,
         "visit_date": message.text,
         "status": "Новая"
     })
 
     bot.send_message(
         message.chat.id,
-        "✅ Запись принята!\nАдминистратор скоро свяжется с тобой 💖"
+        "✅ Запись принята!\nАдминистратор скоро свяжется с тобой 💖",
+        reply_markup=main_menu()
     )
 
     bot.send_message(
@@ -103,12 +125,7 @@ def get_date(message):
         f"{data['service']} | {message.text}"
     )
 
-# ===== АКЦИИ =====
-@bot.message_handler(func=lambda m: m.text == "🔥 Акции")
-def promo(message):
-    bot.send_message(
-        message.chat.id,
-        "🔥 Акция недели!\nМаникюр + уход со скидкой 💅"
-    )
+    user_state.pop(message.chat.id, None)
+    crm.pop(message.chat.id, None)
 
 bot.infinity_polling()
