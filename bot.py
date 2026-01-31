@@ -139,23 +139,39 @@ def get_name(message):
 
 @bot.message_handler(func=lambda m: user_state.get(m.chat.id) == "WAIT_PHONE")
 def get_phone(message):
-    crm[message.chat.id]["phone"] = message.text
+    phone = message.text.strip()
+
+    if not phone.isdigit() or len(phone) < 10:
+        bot.send_message(
+            message.chat.id,
+            "📞 Напиши номер телефона цифрами\nНапример: 89529932098"
+        )
+        return
+
+    crm.setdefault(message.chat.id, {})
+    crm[message.chat.id]["phone"] = phone
+
     user_state[message.chat.id] = "WAIT_DATE"
-    bot.send_message(message.chat.id, "На какую дату хочешь записаться? (например: 5 февраля)")
+    bot.send_message(
+        message.chat.id,
+        "На какую дату хочешь записаться? (например: 5 февраля)"
+    )
 
 
 @bot.message_handler(func=lambda m: user_state.get(m.chat.id) == "WAIT_DATE")
 def get_date(message):
-    text = message.text.lower()
+    text = message.text.strip()
 
     if len(text) < 3:
-        bot.send_message(message.chat.id, "Напиши дату нормально 😊 Например: 5 февраля")
+        bot.send_message(
+            message.chat.id,
+            "📅 Напиши дату нормально 😊 Например: 6 июня"
+        )
         return
 
-    data = crm[message.chat.id]
+    data = crm.get(message.chat.id, {})
 
     request_id = str(uuid.uuid4())[:8]
-    now = datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
 
     bot.send_message(
         message.chat.id,
@@ -168,27 +184,12 @@ def get_date(message):
         f"🆕 Заявка #{request_id}\n"
         f"{data.get('name')} | {data.get('phone')}\n"
         f"{data.get('service')}\n"
-        f"Дата: {message.text}"
+        f"Дата: {text}"
     )
 
+    # ❗ важно
     user_state.pop(message.chat.id, None)
     crm.pop(message.chat.id, None)
 
-
-    bot.send_message(
-        message.chat.id,
-        "✅ Запись принята!\nАдминистратор скоро свяжется с тобой 💖",
-        reply_markup=main_menu()
-    )
-
-    bot.send_message(
-        ADMIN_ID,
-        f"🆕 Заявка #{request_id}\n"
-        f"{data['name']} | {data['phone']}\n"
-        f"{data['service']} | {message.text}"
-    )
-
-    user_state.pop(message.chat.id, None)
-    crm.pop(message.chat.id, None)
 
 bot.infinity_polling()
