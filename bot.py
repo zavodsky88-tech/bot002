@@ -1,80 +1,143 @@
 import telebot
 from telebot import types
-import json
-import os
+import uuid
+import datetime
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
-# ====== Настройки ======
+# ===== НАСТРОЙКИ =====
 TOKEN = "8542034986:AAHlph-7hJgQn_AxH2PPXhZLUPUKTkztbiI"
-ADMIN_ID = 1979125261  # Ваш Telegram ID
-SALON_NAME = "Салон красоты"
-ADDRESS = "ул. Примерная, 1"
-WORK_HOURS = "10:00–20:00"
-PHONE = "+7 (999) 123-45-67"
-PAY_LINK = "https://pay.qiwi.com/order/external/ВАША_СУММА"  # ссылка на оплату
+ADMIN_ID = 1979125261
+SALON_NAME = "Nails & Style"
+
+# ===== GOOGLE SHEETS =====
+SCOPE = [
+    "https://spreadsheets.google.com/feeds",
+    "https://www.googleapis.com/auth/drive"
+]
+
+creds = ServiceAccountCredentials.from_json_keyfile_name(
+    "creds.json", SCOPE
+)
+client = gspread.authorize(creds)
+sheet = client.open("CRM_Salon").sheet1
 
 bot = telebot.TeleBot(TOKEN)
 
-# ====== Локальное хранилище заявок (JSON) ======
-DB_FILE = "applications.json"
-if not os.path.exists(DB_FILE):
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump([], f)
+# временное хранилище диалогов
+user_data = {}
 
-def save_application(app):
-    with open(DB_FILE, "r+", encoding="utf-8") as f:
-        data = json.load(f)
-        data.append(app)
-        f.seek(0)
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-# ====== Главное меню ======
-def menu():
-    m = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    m.row("💇‍♀️ Услуги", "📅 Записаться")
-    m.row("💰 Цены", "📍 Контакты")
-    return m
-
-# ====== Старт ======
+# ===== СТАРТ =====
 @bot.message_handler(commands=["start"])
 def start(message):
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("✨ Подобрать услугу")
+    kb.add("📅 Записаться", "🔥 Акции")
     bot.send_message(
         message.chat.id,
-        f"💅 Добро пожаловать в {SALON_NAME}!\nВыберите пункт меню:",
-        reply_markup=menu()
+        f"💅 Привет!\nЯ помощник салона *{SALON_NAME}*.\nПомогу выбрать услугу и записаться 💖",
+        parse_mode="Markdown",
+        reply_markup=kb
     )
 
-# ====== Обработка кнопок ======
-@bot.message_handler(func=lambda m: True)
-def handler(message):
-    if message.text == "💇‍♀️ Услуги":
-        bot.send_message(message.chat.id, "Маникюр • Стрижки • Брови • Макияж")
-    elif message.text == "💰 Цены":
-        bot.send_message(message.chat.id, "Маникюр — от 1000 ₽\nСтрижка — от 800 ₽\nБрови — от 500 ₽")
-    elif message.text == "📍 Контакты":
-        bot.send_message(message.chat.id, f"{ADDRESS}\n{PHONE}\nЧасы работы: {WORK_HOURS}")
-    elif message.text == "📅 Записаться":
-        msg = bot.send_message(message.chat.id, "Напишите заявку в формате:\nИмя, услуга, дата, телефон")
-        bot.register_next_step_handler(msg, application)
-    else:
-        bot.send_message(message.chat.id, "Выберите пункт из меню", reply_markup=menu())
+# ===== ПОДБОР УСЛУГИ (КРЕАТИВ) =====
+@bot.message_handler(func=lambda m: m.text == "✨ Подобрать услугу")
+def choose_service(message):
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("💨 Быстро", "✨ Эффектно", "💆‍♀️ Уход")
+    bot.send_message(
+        message.chat.id,
+        "Что для тебя важнее сегодня?",
+        reply_markup=kb
+    )
 
-# ====== Получение заявки ======
-def application(message):
-    # Формируем заявку
-    app = {
-        "user_id": message.chat.id,
-        "text": message.text
+@bot.message_handler(func=lambda m: m.text in ["💨 Быстро", "✨ Эффектно", "💆‍♀️ Уход"])
+def recommend(message):
+    recommendations = {
+        "💨 Быстро": "Экспресс-маникюр (40 минут)",
+        "✨ Эффектно": "Маникюр + дизайн",
+        "💆‍♀️ Уход": "Маникюр + SPA уход"
     }
-    save_application(app)
+    service = recommendations[message.text]
+    user_data[message.chat.id] = {"service": service}
 
-    # Отправляем пользователю ссылку на оплату
-    markup = types.InlineKeyboardMarkup()
-    pay_button = types.InlineKeyboardButton(text="💳 Оплатить", url=PAY_LINK)
-    markup.add(pay_button)
-    bot.send_message(message.chat.id, "✅ Ваша заявка принята! Оплатите, чтобы подтвердить:", reply_markup=markup)
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("📅 Записаться", "🔙 В меню")
 
-    # Уведомляем администратора
-    bot.send_message(ADMIN_ID, f"Новая заявка:\n{message.text}\nОплата через: {PAY_LINK}")
+    bot.send_message(
+        message.chat.id,
+        f"✨ Рекомендую:\n*{service}*\n\nХочешь записаться?",
+        parse_mode="Markdown",
+        reply_markup=kb
+    )
 
-# ====== Запуск бота ======
+# ===== ЗАПИСЬ (ПОШАГОВО) =====
+@bot.message_handler(func=lambda m: m.text == "📅 Записаться")
+def ask_name(message):
+    user_data[message.chat.id] = {}
+    msg = bot.send_message(message.chat.id, "Как тебя зовут?")
+    bot.register_next_step_handler(msg, get_name)
+
+def get_name(message):
+    user_data[message.chat.id]["name"] = message.text
+    msg = bot.send_message(message.chat.id, "Оставь номер телефона 📞")
+    bot.register_next_step_handler(msg, get_phone)
+
+def get_phone(message):
+    user_data[message.chat.id]["phone"] = message.text
+
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("Маникюр", "Стрижка", "Брови", "Макияж")
+    msg = bot.send_message(message.chat.id, "Выбери услугу:", reply_markup=kb)
+    bot.register_next_step_handler(msg, get_service)
+
+def get_service(message):
+    user_data[message.chat.id]["service"] = message.text
+    msg = bot.send_message(message.chat.id, "На какую дату хочешь записаться? (например: 5 февраля)")
+    bot.register_next_step_handler(msg, get_date)
+
+def get_date(message):
+    data = user_data[message.chat.id]
+
+    request_id = str(uuid.uuid4())[:8]
+    now = datetime.datetime.now().strftime("%d.%m.%Y %H:%M")
+
+    sheet.append_row([
+        request_id,
+        now,
+        data["name"],
+        data["phone"],
+        data["service"],
+        message.text,
+        "🟡 Новая",
+        "Telegram"
+    ])
+
+    bot.send_message(
+        message.chat.id,
+        f"✅ Запись принята!\n\n"
+        f"📌 Услуга: {data['service']}\n"
+        f"📅 Дата: {message.text}\n\n"
+        f"Администратор скоро свяжется с тобой 💖"
+    )
+
+    bot.send_message(
+        ADMIN_ID,
+        f"🆕 Новая заявка #{request_id}\n"
+        f"Имя: {data['name']}\n"
+        f"Телефон: {data['phone']}\n"
+        f"Услуга: {data['service']}\n"
+        f"Дата: {message.text}"
+    )
+
+# ===== АКЦИИ =====
+@bot.message_handler(func=lambda m: m.text == "🔥 Акции")
+def promo(message):
+    bot.send_message(
+        message.chat.id,
+        "🔥 *Акция недели!*\nМаникюр + уход — со скидкой 💅",
+        parse_mode="Markdown"
+    )
+
+# ===== ЗАПУСК =====
 bot.infinity_polling()
