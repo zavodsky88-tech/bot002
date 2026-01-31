@@ -45,6 +45,59 @@ def info(message):
     else:
         bot.send_message(message.chat.id, "📍 ул. Примерная, 1\n📞 +7 999 000-00-00")
 
+# ===== ПОДБОР УСЛУГИ =====
+@bot.message_handler(func=lambda m: m.text == "✨ Подобрать услугу")
+def choose_service(message):
+    user_state.pop(message.chat.id, None)
+    crm.pop(message.chat.id, None)
+
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("💨 Быстро", "✨ Эффектно", "💆‍♀️ Уход")
+    kb.add("🔙 В меню")
+
+    bot.send_message(
+        message.chat.id,
+        "Окей 😊\nЧто для тебя важнее сегодня?",
+        reply_markup=kb
+    )
+
+
+@bot.message_handler(func=lambda m: m.text in ["💨 Быстро", "✨ Эффектно", "💆‍♀️ Уход"])
+def recommend_service(message):
+    recommendations = {
+        "💨 Быстро": "Экспресс-маникюр (40 минут)",
+        "✨ Эффектно": "Маникюр + дизайн",
+        "💆‍♀️ Уход": "Маникюр + SPA-уход"
+    }
+
+    service = recommendations[message.text]
+
+    crm[message.chat.id] = {"service": service}
+
+    kb = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    kb.add("📅 Записаться")
+    kb.add("🔙 В меню")
+
+    bot.send_message(
+        message.chat.id,
+        f"✨ Рекомендую:\n*{service}*\n\nХочешь записаться?",
+        parse_mode="Markdown",
+        reply_markup=kb
+    )
+
+
+@bot.message_handler(func=lambda m: m.text == "🔙 В меню")
+def back_to_menu(message):
+    user_state.pop(message.chat.id, None)
+    crm.pop(message.chat.id, None)
+
+    bot.send_message(
+        message.chat.id,
+        "Ок, возвращаемся в меню 👇",
+        reply_markup=main_menu()
+    )
+
+
 # ===== НАЧАЛО ЗАПИСИ =====
 @bot.message_handler(func=lambda m: m.text == "📅 Записаться")
 def booking_start(message):
